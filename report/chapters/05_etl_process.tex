@@ -16,7 +16,7 @@ the service periodically fetches market JSON for the allowed servers (Europe and
 
 \section{Detailed description of ETL steps}
 \subsection{Extract}
-	extbf{Goal:} Convert semi-structured market JSON into consistent Python domain objects.
+\textbf{Goal:} Convert semi-structured market JSON into consistent Python domain objects.
 \begin{itemize}
   \item Fetch market payload (JSON array) from the external source.
   \item De-duplicate exact duplicate listings in one fetch (prevents inflated counts).
@@ -24,19 +24,19 @@ the service periodically fetches market JSON for the allowed servers (Europe and
   \item Parse each listing into a \texttt{MarketItem} (\texttt{models/market\_models.py}) using \texttt{etl/extractor.py}:
   vnum, item type/subtype, sockets, attributes (regular + random), durability, enhancement, price (won + yang).
   \item Enrich listing context fields used for filtering and analysis:
-  	exttt{server\_id}, \texttt{seller\_name}, \texttt{job\_id}, \texttt{category\_code}, \texttt{category\_id}, \texttt{quantity}.
+  	\texttt{server\_id}, \texttt{seller\_name}, \texttt{job\_id}, \texttt{category\_code}, \texttt{category\_id}, \texttt{quantity}.
   \item \textbf{English naming:} the extractor prefers English item names from synced static reference files
   (\texttt{data/external/m2\_data/en/item\_names.json}) to ensure stable labels across servers/locales.
 \end{itemize}
 
 \subsection{Transform}
-	extbf{Goal:} Apply business rules and produce dimension/fact records ready for a constellation schema.
+\textbf{Goal:} Apply business rules and produce dimension/fact records ready for a constellation schema.
 \begin{itemize}
   \item Create a single \textbf{batch timestamp} for the full snapshot (\texttt{etl/pipeline.py}).
   This makes it possible to join facts for the same snapshot and avoids mixing partial loads.
   \item Normalize descriptive fields (e.g., strip HTML tags from names) using \texttt{DataTransformer.normalize\_item\_name}.
   \item Build dimension rows (\texttt{etl/transformer.py}):
-  	exttt{dim\_item} (stable item identity) and \texttt{dim\_time} (calendar attributes).
+  	\texttt{dim\_item} (stable item identity) and \texttt{dim\_time} (calendar attributes).
   \item Build property rows (\texttt{dim\_item\_properties}) from parsed stats/bonuses so equipment analysis can group by bonuses.
   \item Build fact rows for each listing:
   \begin{itemize}
@@ -52,7 +52,7 @@ the service periodically fetches market JSON for the allowed servers (Europe and
 \end{itemize}
 
 \subsection{Load (pygramETL)}
-	extbf{Goal:} Load records into PostgreSQL using \textbf{pygramETL} abstractions (dimensions + facts).
+\textbf{Goal:} Load records into PostgreSQL using \textbf{pygramETL} abstractions (dimensions + facts).
 \begin{itemize}
   \item \textbf{When and where we connect with pygramETL:}
   the connection is created during the load phase inside \texttt{WarehouseLoader.connect()} (\texttt{etl/loader.py}).
@@ -61,7 +61,7 @@ the service periodically fetches market JSON for the allowed servers (Europe and
     \item Connect to PostgreSQL using \texttt{psycopg2.connect(connection\_string)}.
     \item Wrap the DB connection using \texttt{pygrametl.ConnectionWrapper} and set it as default via \texttt{dwconn.setasdefault()}.
     \item Initialize pygramETL table objects in \texttt{WarehouseLoader.\_setup\_pygrametl\_tables()}:
-    	exttt{CachedDimension} for \texttt{dim\_item}, \texttt{dim\_time}, \texttt{dim\_transaction\_type} and \texttt{FactTable} for facts.
+    	\texttt{CachedDimension} for \texttt{dim\_item}, \texttt{dim\_time}, \texttt{dim\_transaction\_type} and \texttt{FactTable} for facts.
   \end{itemize}
   \item Use \texttt{CachedDimension.ensure()} to insert-or-get dimension rows and obtain surrogate keys.
   \item Insert facts with foreign keys using \texttt{FactTable.insert()}.
@@ -69,7 +69,7 @@ the service periodically fetches market JSON for the allowed servers (Europe and
 \end{itemize}
 
 \begin{challengebox}
-	extbf{Why pygramETL?} \newline
+\textbf{Why pygramETL?} \\
 pygramETL provides a clean loading layer for dimensional models:
 \begin{itemize}
   \item \textbf{Idempotent dimensions:} \texttt{ensure()} avoids duplicate dimension rows when the same item appears across many snapshots.

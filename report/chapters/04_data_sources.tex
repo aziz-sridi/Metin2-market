@@ -74,7 +74,7 @@ We synchronize these files once and reuse them throughout the ETL:
 \centering
 \caption{Reference JSON files used to interpret listings}
 \begin{tabularx}{\linewidth}{@{}lX@{}}
-	oprule
+	\toprule
 	\textbf{File} & \textbf{Purpose (observed)} \\
 \midrule
 	\texttt{/m2\_data/en/stat\_map.json} & Human-readable mapping for a subset of game stats/labels.
@@ -105,12 +105,12 @@ The following mapping summarizes the key fields used by the ETL.
 
 \begin{longtable}{@{}p{0.22\linewidth}p{0.73\linewidth}@{}}
 \caption{Market listing fields and interpreted semantics}\label{tab:market-payload-fields}\\
-	oprule
-	textbf{Field} & \textbf{Meaning and usage in the warehouse} \\
+		\toprule
+		\textbf{Field} & \textbf{Meaning and usage in the warehouse} \\
 \midrule
 \endfirsthead
-	oprule
-	textbf{Field} & \textbf{Meaning and usage in the warehouse} \\
+		\toprule
+		\textbf{Field} & \textbf{Meaning and usage in the warehouse} \\
 \midrule
 \endhead
 \bottomrule

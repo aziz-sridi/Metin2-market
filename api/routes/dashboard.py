@@ -1,9 +1,9 @@
-"""Dashboard routes (server-rendered) for analytics + visualization.
+"""Backend endpoints used by the React web application.
 
-Everything stays in Python:
-- Data comes from the warehouse (PostgreSQL)
-- Analysis is computed in Python/SQL
-- Plots are generated with Plotly in Python and embedded into HTML
+This module exposes JSON APIs under `/api/dashboard/*` consumed by the Vite + React
+frontend (search, history, equipment analysis, deals, KPI data, etc.).
+
+Note: The legacy server-rendered HTML dashboard at `/dashboard` has been removed.
 """
 
 from __future__ import annotations
@@ -15,10 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-from fastapi import APIRouter, Body, Query, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, Body, Query
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 
@@ -26,7 +23,6 @@ from config.settings import config
 
 
 router = APIRouter()
-templates = Jinja2Templates(directory="api/templates")
 
 
 EQUIPMENT_TYPES = {"ITEM_WEAPON", "ITEM_ARMOR"}
@@ -151,11 +147,6 @@ def _bonus_where_clause(prefix: str, *, stat_id_param: str, min_value_param: str
             for k in range(1, 8)
         ]
     ) + ")"
-
-
-def _fig_to_div(fig: go.Figure) -> str:
-    # Use CDN plotly.js (keeps HTML small)
-    return fig.to_html(include_plotlyjs="cdn", full_html=False)
 
 
 def _query_item_search(engine, q: str, limit: int = 30) -> pd.DataFrame:
@@ -380,46 +371,6 @@ def _query_non_equipment_price_history(
         engine,
         params=params,
     )
-
-
-def _plot_price_history(df: pd.DataFrame) -> str:
-    if df.empty:
-        return ""
-
-    fig = go.Figure()
-
-    for item_vnum, group in df.groupby("item_vnum"):
-        name = str(group["item_name"].iloc[0])
-        fig.add_trace(
-            go.Scatter(
-                x=group["full_date"],
-                y=group["min_price_yang"],
-                mode="lines+markers",
-                name=f"{name} (min)",
-            )
-        )
-
-        # When min count < 5, show median(lowest5) as second line.
-        # We still plot it always; user can compare.
-        fig.add_trace(
-            go.Scatter(
-                x=group["full_date"],
-                y=group["median_lowest5_yang"],
-                mode="lines",
-                name=f"{name} (median lowest5)",
-                line=dict(dash="dot"),
-            )
-        )
-
-    fig.update_layout(
-        title="Non-equipment price history (min + median of lowest 5)",
-        xaxis_title="Date",
-        yaxis_title="Price (Yang)",
-        legend_title="Item",
-        height=420,
-        margin=dict(l=40, r=20, t=50, b=40),
-    )
-    return _fig_to_div(fig)
 
 
 def _query_equipment_joined(engine, item_vnum: int, days: int = 30) -> pd.DataFrame:
@@ -758,6 +709,8 @@ class AlertQueryRequest(BaseModel):
 
     # Item scope
     item_vnums: Optional[List[int]] = None
+    # Optional substring filter on dim_item.item_name (case-insensitive)
+    item_name_query: Optional[str] = None
     # any | non_equipment | equipment
     item_scope: str = "any"
 
@@ -896,6 +849,13 @@ def api_query_listings(payload: AlertQueryRequest = Body(...)):
         if vnums:
             where.append("di.item_vnum = ANY(%(item_vnums)s)")
             params["item_vnums"] = vnums
+
+    # Item name filter (used by Alerts UI when user types a name but does not select vnums)
+    if payload.item_name_query:
+        q = str(payload.item_name_query).strip()
+        if q:
+            where.append("di.item_name ILIKE %(item_name_like)s")
+            params["item_name_like"] = f"%{q}%"
 
     # Item scope
     if item_scope == "equipment":
@@ -1432,74 +1392,3 @@ def api_item_estimate(payload: PriceEstimateRequest = Body(...)):
     }
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
-def dashboard(
-    request: Request,
-    q: str = Query(default="", description="Search by item name"),
-    items: str = Query(default="", description="Comma-separated item_vnum list for non-equipment price history"),
-    equipment_vnum: Optional[int] = Query(default=None, description="Equipment item_vnum for bonus analysis"),
-    bonuses: str = Query(default="", description="Estimator bonuses like 71:10,72:5"),
-):
-    engine = _engine()
-
-    search_df = _query_item_search(engine, q) if q else pd.DataFrame()
-
-    selected_item_vnums = _parse_vnum_list(items)
-    non_eq_hist = _query_non_equipment_price_history(engine, selected_item_vnums)
-    price_history_div = _plot_price_history(non_eq_hist)
-
-    bonus_impact = pd.DataFrame()
-    bonus_fig_div = ""
-    estimate_price = None
-
-    if equipment_vnum is not None:
-        eq_df = _query_equipment_joined(engine, equipment_vnum)
-        attrs_df = _unpivot_attrs(eq_df)
-        bonus_impact = _bonus_impact_table(attrs_df)
-
-        if not bonus_impact.empty:
-            fig = go.Figure(
-                data=[
-                    go.Bar(
-                        x=bonus_impact["stat_id"].astype(str),
-                        y=bonus_impact["premium"],
-                        text=bonus_impact["count"],
-                    )
-                ]
-            )
-            fig.update_layout(
-                title="Bonuses that increase price the most (premium vs without)",
-                xaxis_title="stat_id",
-                yaxis_title="Avg price premium (Yang)",
-                height=380,
-                margin=dict(l=40, r=20, t=50, b=40),
-            )
-            bonus_fig_div = _fig_to_div(fig)
-
-        # Estimator
-        pairs = _parse_bonus_pairs(bonuses)
-        if pairs:
-            intercept, coefs = _fit_price_model(attrs_df)
-            pred_log = intercept
-            for sid, val in pairs:
-                pred_log += coefs.get(sid, 0.0) * float(val)
-            estimate_price = int(max(0.0, float(np.expm1(pred_log))))
-
-    deals_df = _query_deals(engine, limit=30)
-
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "q": q,
-            "items": items,
-            "equipment_vnum": equipment_vnum,
-            "bonuses": bonuses,
-            "search_rows": [] if search_df.empty else search_df.to_dict(orient="records"),
-            "price_history_div": price_history_div,
-            "bonus_fig_div": bonus_fig_div,
-            "bonus_impact_rows": [] if bonus_impact.empty else bonus_impact.to_dict(orient="records"),
-            "estimate_price": estimate_price,
-            "deals_rows": [] if deals_df.empty else deals_df.to_dict(orient="records"),
-        },
-    )

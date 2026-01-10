@@ -172,9 +172,14 @@ export default function AlertsPage() {
   }
 
   function buildPayload({ sinceIso = null } = {}) {
+    const itemNameQuery = !selectedItems.length
+      ? (q.trim() || name.trim() || null)
+      : null
+
     const payload = {
       server_ids: (selectedServers || []).map(Number),
       item_vnums: selectedItems.length ? selectedItems.map((x) => Number(x.item_vnum)) : null,
+      item_name_query: itemNameQuery,
       item_scope: scope,
       max_price_yang: maxPriceYang.trim() ? Number(maxPriceYang) : null,
       min_enhancement_level: minPlus.trim() ? Number(minPlus) : null,
@@ -192,6 +197,7 @@ export default function AlertsPage() {
     }
 
     if (!payload.item_vnums) delete payload.item_vnums
+  if (!payload.item_name_query) delete payload.item_name_query
     if (!payload.max_price_yang) delete payload.max_price_yang
     if (payload.min_enhancement_level == null) delete payload.min_enhancement_level
     if (payload.max_enhancement_level == null) delete payload.max_enhancement_level
@@ -230,6 +236,7 @@ export default function AlertsPage() {
         minQty,
         bonusMode,
         bonuses,
+        q,
         selectedItems,
       },
       created_at: new Date().toISOString(),
@@ -251,6 +258,7 @@ export default function AlertsPage() {
     setMaxPlus(q.maxPlus ?? '')
     setMinQty(q.minQty ?? '')
     setBonusMode(q.bonusMode || 'AND')
+    setQ(q.q ?? '')
     const rawBonuses = Array.isArray(q.bonuses) && q.bonuses.length ? q.bonuses : [{ stat_id: '', min_value: '0' }]
     setBonuses(
       rawBonuses.map((b) => ({

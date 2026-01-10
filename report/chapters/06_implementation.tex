@@ -8,24 +8,14 @@ The system is implemented in Python with a clear separation of concerns:
   \item \textbf{Reporting}: Matplotlib dashboards computed from warehouse queries.
 \end{itemize}
 
-\section{Application features (API + web dashboard)}
+\section{Application features (API + React web application)}
 This project includes a complete decision-support application on top of the warehouse:
 \begin{itemize}
   \item A \textbf{FastAPI backend} that exposes analytical endpoints and runs the automatic sync + ETL loop at startup.
   \item A \textbf{web dashboard} (Vite + React) that lets users search items, plot price history, analyze equipment bonuses, and browse undervalued deals.
-  \item A \textbf{server-rendered Python dashboard} that embeds Plotly graphs into HTML (useful for quick analysis without the React app).
 \end{itemize}
 
-\subsection{Screenshots}
-The report expects screenshots to be placed in \texttt{report/figures/}. If a screenshot is missing, the PDF will show a placeholder box.
-
-\screenshotfigure{web_home.png}{Web UI: Home dashboard with tracked items and quick search.}
-\screenshotfigure{web_item_search.png}{Web UI: Item search and selection experience.}
-\screenshotfigure{web_price_history.png}{Web UI: Price History page (Plotly time-series + filters by server/category/bonuses).}
-\screenshotfigure{web_deals.png}{Web UI: Deals page (undervalued items from \texttt{fact\_undervalued\_items}).}
-\screenshotfigure{web_equipment.png}{Web UI: Equipment analysis (bonus impact + price estimator).}
-\screenshotfigure{api_docs.png}{FastAPI: Interactive API documentation at \texttt{/docs}.}
-\screenshotfigure{server_dashboard_plotly.png}{Server-rendered dashboard: Plotly visualizations embedded in HTML.}
+UI screenshots are consolidated in Chapter~7.
 
 \subsection{Automation and scheduling}
 A periodic loop runs inside the backend service. It fetches market data for the allowed servers, compares a hash of the normalized payload, and triggers ETL only when the payload changes.
