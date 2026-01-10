@@ -1,0 +1,99 @@
+\chapter{ETL Process}
+
+\section{Overall process architecture}
+The ETL is fully automated and is triggered by the backend sync loop:
+the service periodically fetches market JSON for the allowed servers (Europe and Teutonia), detects changes via a hash, and executes the ETL only when a new snapshot is detected.
+
+\begin{itemize}
+  \item \textbf{Scheduler / change detection:} \texttt{sync/auto\_sync.py}
+  \item \textbf{ETL orchestrator:} \texttt{etl/pipeline.py}
+  \item \textbf{Extract:} \texttt{etl/extractor.py} + \texttt{etl/cleaning.py}
+  \item \textbf{Transform:} \texttt{etl/transformer.py}
+  \item \textbf{Load (pygramETL + PostgreSQL):} \texttt{etl/loader.py}
+\end{itemize}
+
+\placeholderfigure{ETL Flow (Extract \textrightarrow Transform \textrightarrow Load)}{0.92\linewidth}{5.5cm}
+
+\section{Detailed description of ETL steps}
+\subsection{Extract}
+	extbf{Goal:} Convert semi-structured market JSON into consistent Python domain objects.
+\begin{itemize}
+  \item Fetch market payload (JSON array) from the external source.
+  \item De-duplicate exact duplicate listings in one fetch (prevents inflated counts).
+  \item Clean payload shape and types (e.g., missing arrays, wrong types) using \texttt{etl/cleaning.py}.
+  \item Parse each listing into a \texttt{MarketItem} (\texttt{models/market\_models.py}) using \texttt{etl/extractor.py}:
+  vnum, item type/subtype, sockets, attributes (regular + random), durability, enhancement, price (won + yang).
+  \item Enrich listing context fields used for filtering and analysis:
+  	exttt{server\_id}, \texttt{seller\_name}, \texttt{job\_id}, \texttt{category\_code}, \texttt{category\_id}, \texttt{quantity}.
+  \item \textbf{English naming:} the extractor prefers English item names from synced static reference files
+  (\texttt{data/external/m2\_data/en/item\_names.json}) to ensure stable labels across servers/locales.
+\end{itemize}
+
+\subsection{Transform}
+	extbf{Goal:} Apply business rules and produce dimension/fact records ready for a constellation schema.
+\begin{itemize}
+  \item Create a single \textbf{batch timestamp} for the full snapshot (\texttt{etl/pipeline.py}).
+  This makes it possible to join facts for the same snapshot and avoids mixing partial loads.
+  \item Normalize descriptive fields (e.g., strip HTML tags from names) using \texttt{DataTransformer.normalize\_item\_name}.
+  \item Build dimension rows (\texttt{etl/transformer.py}):
+  	exttt{dim\_item} (stable item identity) and \texttt{dim\_time} (calendar attributes).
+  \item Build property rows (\texttt{dim\_item\_properties}) from parsed stats/bonuses so equipment analysis can group by bonuses.
+  \item Build fact rows for each listing:
+  \begin{itemize}
+    \item \texttt{fact\_market\_transaction}: prices, quantity, enhancement, durability, sockets, attribute count + listing context.
+    \item \texttt{fact\_item\_attributes}: up to 7 attribute slots (stat/value), rarity score and derived multipliers.
+  \end{itemize}
+  \item Compute decision-support KPIs:
+  \begin{itemize}
+    \item \textbf{Estimated fair value:} \texttt{DataTransformer.estimate\_item\_fair\_value} (intrinsic model).
+    \item \textbf{Undervaluation detection:} \texttt{DataTransformer.detect\_undervalued\_item} produces \texttt{fact\_undervalued\_items}
+    with percentage, profit, confidence score, and a deal rating.
+  \end{itemize}
+\end{itemize}
+
+\subsection{Load (pygramETL)}
+	extbf{Goal:} Load records into PostgreSQL using \textbf{pygramETL} abstractions (dimensions + facts).
+\begin{itemize}
+  \item \textbf{When and where we connect with pygramETL:}
+  the connection is created during the load phase inside \texttt{WarehouseLoader.connect()} (\texttt{etl/loader.py}).
+  \item \textbf{How it connects:}
+  \begin{itemize}
+    \item Connect to PostgreSQL using \texttt{psycopg2.connect(connection\_string)}.
+    \item Wrap the DB connection using \texttt{pygrametl.ConnectionWrapper} and set it as default via \texttt{dwconn.setasdefault()}.
+    \item Initialize pygramETL table objects in \texttt{WarehouseLoader.\_setup\_pygrametl\_tables()}:
+    	exttt{CachedDimension} for \texttt{dim\_item}, \texttt{dim\_time}, \texttt{dim\_transaction\_type} and \texttt{FactTable} for facts.
+  \end{itemize}
+  \item Use \texttt{CachedDimension.ensure()} to insert-or-get dimension rows and obtain surrogate keys.
+  \item Insert facts with foreign keys using \texttt{FactTable.insert()}.
+  \item Commit per stage and rollback on error (keeps warehouse consistent).
+\end{itemize}
+
+\begin{challengebox}
+	extbf{Why pygramETL?} \newline
+pygramETL provides a clean loading layer for dimensional models:
+\begin{itemize}
+  \item \textbf{Idempotent dimensions:} \texttt{ensure()} avoids duplicate dimension rows when the same item appears across many snapshots.
+  \item \textbf{Surrogate key handling:} dimensions return surrogate keys directly, simplifying fact inserts.
+  \item \textbf{Caching:} \texttt{CachedDimension} speeds up repeated lookups for popular items.
+\end{itemize}
+\end{challengebox}
+
+\section{Justification of transformations applied}
+\begin{itemize}
+  \item \textbf{English normalization}: stable labels across servers/locales; better grouping in dashboards.
+  \item \textbf{Dimensional modeling}: separates stable descriptions (dimensions) from changing measures (facts).
+  \item \textbf{Batch timestamps}: consistent snapshot alignment across facts (transactions + attributes + undervaluation).
+  \item \textbf{Derived KPIs}: turns raw prices into decision-ready metrics (estimated value, confidence, profit).
+\end{itemize}
+
+\begin{challengebox}
+\textbf{Reverse engineering (API + JSON).} \\[0.25em]
+After discovering the JSON endpoints by observing client network calls, we still had to interpret the payload:
+\begin{itemize}
+  \item Identify which fields represent item identity vs. listing identity.
+  \item Decode attribute arrays and their stat/value meaning.
+  \item Handle missing or item-type-specific fields safely.
+\end{itemize}
+This reverse engineering step was essential to create a stable schema suitable for a warehouse.
+\end{challengebox}
+

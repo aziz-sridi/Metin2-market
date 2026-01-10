@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+.venv_broken_transfer/
+venv_broken_transfer/
+
+# Local environment config
+.env
+
+# Runtime sync state (generated)
+sync_state*.json
+sync_static_state.json
+
+# Node
+web/node_modules/
+web/dist/
+
+# LaTeX build artifacts
+report/**/*.aux
+report/**/*.log
+report/**/*.out
+report/**/*.toc
+report/**/*.lof
+report/**/*.lot
+report/**/*.fls
+report/**/*.fdb_latexmk
+report/**/*.synctex.gz
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/

@@ -1,0 +1,30 @@
+\chapter{Appendix}
+
+\section{Repository map (for the examiner)}
+\begin{itemize}
+  \item ETL pipeline: \texttt{etl/pipeline.py}
+  \item Extractor: \texttt{etl/extractor.py}
+  \item Transformer: \texttt{etl/transformer.py}
+  \item Loader (pygramETL): \texttt{etl/loader.py}
+  \item SQL schema: \texttt{sql/constellation\_schema.sql}
+  \item Matplotlib dashboards: \texttt{reporting/dashboard.py}
+  \item Automation sync: \texttt{sync/auto\_sync.py}
+\end{itemize}
+
+\section{How to generate dashboard images (optional)}
+Example commands:
+\begin{lstlisting}[style=python,caption={Generate KPI images into an output folder}]
+# From repository root:
+# python -m reporting.dashboard --out repport/figures
+# python -m reporting.dashboard --item-vnum 10001 --out repport/figures
+\end{lstlisting}
+
+\section{Notes on placeholders}
+The report intentionally includes framed placeholders for diagrams and screenshots.
+Replace them with real figures when available:
+\begin{lstlisting}[style=python,caption={Replace placeholder with includegraphics}]
+% \placeholderfigure{Title}{0.92\linewidth}{6cm}
+% Replace with:
+% \includegraphics[width=0.92\linewidth]{figures/my_image.png}
+\end{lstlisting}
+

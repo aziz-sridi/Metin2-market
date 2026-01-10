@@ -1,0 +1,196 @@
+\documentclass[12pt,a4paper]{report}
+
+% ============================
+% Packages
+% ============================
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{listings}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable,listings,theorems}
+\usepackage{float}
+
+% ============================
+% Styling
+% ============================
+\onehalfspacing
+
+\definecolor{brandBlue}{HTML}{1D4ED8}
+\definecolor{brandTeal}{HTML}{0F766E}
+\definecolor{brandAmber}{HTML}{B45309}
+\definecolor{brandRed}{HTML}{B91C1C}
+\definecolor{brandGray}{HTML}{111827}
+\definecolor{softBlue}{HTML}{EFF6FF}
+\definecolor{softTeal}{HTML}{ECFDF5}
+\definecolor{softAmber}{HTML}{FFFBEB}
+\definecolor{softRed}{HTML}{FEF2F2}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=brandBlue,
+  urlcolor=brandTeal,
+  citecolor=brandAmber
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Metin2 Market Data Warehouse}
+\rhead{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ============================
+% Listings
+% ============================
+\lstdefinestyle{python}{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{brandBlue}\bfseries,
+  commentstyle=\color{brandTeal},
+  stringstyle=\color{brandAmber},
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{brandGray!25},
+  backgroundcolor=\color{softBlue},
+  tabsize=2
+}
+
+% ============================
+% Callout boxes (colored)
+% ============================
+\newtcolorbox{questionbox}[1][]{
+  breakable,
+  colback=softBlue,
+  colframe=brandBlue,
+  title=\textbf{BI Questions to Answer},
+  fonttitle=\bfseries,
+  sharp corners,
+  boxrule=0.8pt,
+  #1
+}
+
+\newtcolorbox{challengebox}[1][]{
+  breakable,
+  colback=softAmber,
+  colframe=brandAmber,
+  title=\textbf{Challenges \& Constraints},
+  fonttitle=\bfseries,
+  sharp corners,
+  boxrule=0.8pt,
+  #1
+}
+
+\newtcolorbox{conclusionbox}[1][]{
+  breakable,
+  colback=softTeal,
+  colframe=brandTeal,
+  title=\textbf{Conclusion},
+  fonttitle=\bfseries,
+  sharp corners,
+  boxrule=0.8pt,
+  #1
+}
+
+\newtcolorbox{riskbox}[1][]{
+  breakable,
+  colback=softRed,
+  colframe=brandRed,
+  title=\textbf{Data Quality \& Limitations},
+  fonttitle=\bfseries,
+  sharp corners,
+  boxrule=0.8pt,
+  #1
+}
+
+% ============================
+% Figures (screenshots + placeholders)
+% ============================
+\graphicspath{{figures/}}
+
+% Generic placeholder box (keeps LaTeX compiling even if images are missing)
+\newcommand{\placeholderfigure}[3]{%
+  \begin{figure}[!ht]
+  \centering
+  \fbox{\parbox[c][#3][c]{#2}{\centering\textbf{#1}\\[0.5em]\small(placeholder --- add images under report/figures/)}}%
+  \caption{#1}
+  \end{figure}
+}
+
+% Screenshot helper: if figures/<filename> exists, include it; else show a placeholder.
+% Usage: \screenshotfigure{web_home.png}{Home dashboard (web UI)}
+\newcommand{\screenshotfigure}[2]{%
+  \begin{figure}[!ht]
+    \centering
+    \IfFileExists{#1}{%
+      \includegraphics[width=0.92\linewidth]{#1}%
+    }{%
+      \fbox{\parbox[c][6cm][c]{0.92\linewidth}{\centering\textbf{Missing screenshot: #1}\\[0.5em]\small{Place the file in report/figures/}}}%
+    }%
+    \caption{#2}%
+  \end{figure}
+}
+
+% ============================
+% Metadata
+% ============================
+\title{\textbf{Metin2 Market Data Warehouse}\\\large A Decision Support System (Business Intelligence)\\[0.5em]\normalsize PostgreSQL + Python ETL + Dashboards}
+\author{Student(s):Mohamed Aziz Sridi\\Course: Data Warehouse\\Date: \today}
+\date{}
+
+\begin{document}
+
+% ----------------------------
+% Title
+% ----------------------------
+\maketitle
+\thispagestyle{empty}
+\clearpage
+
+% ----------------------------
+% Abstract / executive summary (optional but useful)
+% ----------------------------
+\chapter*{Executive Summary}
+\addcontentsline{toc}{chapter}{Executive Summary}
+This report presents the design and implementation of a decision-support data warehouse for analyzing Metin2 in-game market listings. 
+The system automates data collection from an external web source, transforms semi-structured JSON into a constellation schema in PostgreSQL, and exposes analysis through dashboards (Matplotlib) and an API.
+\clearpage
+
+\tableofcontents
+\listoffigures
+\listoftables
+\clearpage
+
+% ----------------------------
+% Chapters
+% ----------------------------
+\input{chapters/01_introduction}
+\input{chapters/02_subject}
+\input{chapters/04_data_sources}
+\input{chapters/03_dw_design}
+\input{chapters/05_etl_process}
+\input{chapters/06_implementation}
+\input{chapters/07_restitution_analysis}
+\input{chapters/08_conclusion}
+
+\appendix
+\input{chapters/A_appendix}
+
+\end{document}

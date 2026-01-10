@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="M2">
+  <defs>
+    <style>
+      .bg{fill:#0b1220}
+      .stroke{stroke:#334155;stroke-width:3;fill:none}
+      .txt{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;font-weight:800;fill:#e2e8f0}
+    </style>
+  </defs>
+  <path class="bg" d="M48 6 82 26v44L48 90 14 70V26z"/>
+  <path class="stroke" d="M48 8 80 27v42L48 88 16 69V27z"/>
+  <text class="txt" x="48" y="57" text-anchor="middle" font-size="28" letter-spacing="1">M2</text>
+</svg>

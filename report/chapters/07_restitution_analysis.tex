@@ -1,0 +1,99 @@
+\chapter{Dashboard and web application}
+
+\section{Objective}
+The warehouse is complemented by two user-facing layers:
+\begin{itemize}
+  \item a \textbf{server-rendered dashboard} implemented in Python (FastAPI + Jinja2 + Plotly) at \texttt{/dashboard},
+  \item a \textbf{single-page web application} implemented with Vite + React, which consumes the backend APIs.
+\end{itemize}
+The goal is to translate warehouse facts (prices, attributes, deal detection) into a decision-support experience: quick price lookup, trend visualization, equipment bonus impact analysis, undervalued deals browsing, and rule-based alerts.
+
+\section{Server-rendered dashboard (FastAPI + Plotly)}
+The route \texttt{/dashboard} renders a single HTML page (template \texttt{api/templates/dashboard.html}) with interactive Plotly graphs.
+It is useful for quick exploration without running the React app.
+
+\subsection{Main features}
+\begin{itemize}
+  \item \textbf{Item search}: search by item name and select item \texttt{vnum} values.
+  \item \textbf{Non-equipment price history}: plot min/avg price over time for one or more selected items.
+  \item \textbf{Equipment analysis}: compute which bonuses correlate with higher prices ("premium") for a selected equipment \texttt{vnum}.
+  \item \textbf{Equipment estimator}: estimate an equipment price from bonus pairs written as \texttt{stat:value} (example: \texttt{71:10,72:5}).
+  \item \textbf{Deals list}: show undervalued opportunities from \texttt{fact\_undervalued\_items}.
+\end{itemize}
+
+\subsection{Screenshot}
+\screenshotfigure{server_dashboard_plotly.png}{Server-rendered dashboard at \texttt{/dashboard}: Plotly visuals + search + deals.}
+
+\section{React web application (Vite + React)}
+The web UI is implemented as a React application (folder \texttt{web/}) with five pages: \textbf{Home}, \textbf{Alerts}, \textbf{Price history}, \textbf{Equipment}, and \textbf{Deals}.
+It provides a more complete UX with navigation, filtering, and interactive Plotly charts.
+
+\subsection{Navigation and theme}
+The top navigation bar provides access to all pages and includes a light/dark theme toggle.
+\screenshotfigure{web_nav.png}{Web UI: navigation bar and theme toggle.}
+
+\subsection{Home: tracked items + price lookup}
+The Home page is designed for continuous monitoring of a small list of items.
+It starts with two defaults (\texttt{Voucher} \texttt{vnum=80017} and \texttt{Moonstone} \texttt{vnum=30618}) and lets the user add/remove tracked items.
+The tracked list is saved locally in the browser (\texttt{localStorage}).
+
+Each tracked item card shows:
+\begin{itemize}
+  \item latest minimum price (works even when there is only one day/sync group of data),
+  \item average and maximum price, transaction count,
+  \item a small server-generated chart (Matplotlib) returned as a base64 PNG.
+\end{itemize}
+\screenshotfigure{web_home.png}{Web UI: Home dashboard with tracked items and charts.}
+
+\subsection{Price history: trends + filtering}
+The Price history page allows selecting one or more items and plotting their time series (min and avg prices).
+It supports decision-oriented filtering:
+\begin{itemize}
+  \item server selection (Europe 502 / Teutonia 71),
+  \item category filtering,
+  \item enchantment filtering with minimum values, combined with \textbf{AND} / \textbf{OR} matching.
+\end{itemize}
+The page also includes an \textbf{estimator for the current snapshot}, which proposes an estimated price given the active filters.
+\screenshotfigure{web_price_history.png}{Web UI: Price history (multi-item Plotly chart + filters).}
+
+\subsection{Equipment: bonus impact + estimator}
+The Equipment page targets weapons/armor analysis.
+It includes:
+\begin{itemize}
+  \item bonus impact ranking (top bonuses with the strongest observed price premium),
+  \item an estimator that predicts price based on a typed bonus set (\texttt{stat:value} pairs).
+\end{itemize}
+\screenshotfigure{web_equipment.png}{Web UI: Equipment analysis (bonus impact + estimator).}
+
+\subsection{Deals: undervalued opportunities}
+The Deals page lists undervalued items computed by ETL (table \texttt{fact\_undervalued\_items}), including current price, estimated fair value, undervaluation percentage, potential profit, and deal rating.
+\screenshotfigure{web_deals.png}{Web UI: Deals table from \texttt{fact\_undervalued\_items}.}
+
+\subsection{Alerts: saved rules + monitoring}
+The Alerts page provides a rule builder to query recent market listings.
+Users can:
+\begin{itemize}
+  \item select servers,
+  \item restrict items (optional \texttt{vnum} list),
+  \item filter by max price, quantity, enhancement level range,
+  \item filter by bonuses with \textbf{AND} / \textbf{OR} matching.
+\end{itemize}
+Alerts can be saved locally in the browser and reloaded later.
+The page also provides a basic monitoring mode that periodically re-runs the query and displays new matches.
+\screenshotfigure{web_alerts.png}{Web UI: Alerts builder with saved rules and monitoring.}
+
+\section{KPI restitution (example outputs)}
+The system also generates KPI plots from warehouse queries. Example figures produced by the Python dashboard scripts are included below.
+\screenshotfigure{../outputs/kpi_top_items_avg_price.png}{KPI: Top items by average price (Matplotlib).}
+\screenshotfigure{../outputs/kpi_deals_by_rating.png}{KPI: Undervalued deals by rating (Matplotlib).}
+\screenshotfigure{../outputs/kpi_price_history_item_10001.png}{KPI: Price history example for one item (Matplotlib).}
+
+\section{Screenshot checklist (files to add)}
+To include real UI screenshots in the final PDF, export images and place them under \texttt{report/figures/} using the following filenames:
+\begin{itemize}
+  \item \texttt{web_nav.png}, \texttt{web_home.png}, \texttt{web_price_history.png}, \texttt{web_equipment.png}, \texttt{web_deals.png}, \texttt{web_alerts.png}
+  \item \texttt{server_dashboard_plotly.png}
+  \item \texttt{api_docs.png} (optional: Swagger UI at \texttt{/docs})
+\end{itemize}
+If a file is missing, the report will show a placeholder box instead of failing to compile.
+

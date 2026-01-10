@@ -1,0 +1,25 @@
+\chapter{Conclusion}
+
+\begin{conclusionbox}
+\textbf{Project review.} \\[0.25em]
+We built a complete decision-support pipeline: automated data collection, a PostgreSQL constellation warehouse, an ETL process (Extract/Transform/Load) in Python, and Matplotlib dashboards for KPI restitution.
+
+\medskip
+\textbf{Difficulties encountered.}
+\begin{itemize}
+  \item Accessing data at scale required client-side reverse engineering instead of brittle HTML scraping.
+  \item JSON structure was non-trivial and required interpretation/normalization.
+  \item Ensuring consistent English naming required reference data synchronization.
+  \item Maintaining analytical consistency required batch timestamps and deduplication safeguards.
+\end{itemize}
+
+\medskip
+\textbf{Prospects for improvement.}
+\begin{itemize}
+  \item Add richer slowly changing dimensions (SCD) for item metadata evolution.
+  \item Improve incremental loading strategies and partitioning for very large history.
+  \item Add additional data sources (e.g., CSV historical exports) to improve time coverage.
+  \item Expand dashboards with more statistical models (seasonality, anomaly detection).
+\end{itemize}
+\end{conclusionbox}
+
