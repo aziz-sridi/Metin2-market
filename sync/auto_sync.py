@@ -1,9 +1,10 @@
 """Automatic external market fetch + warehouse load.
 
 This script:
-- Fetches external market JSON via Python requests
+- Fetches an authorized market JSON feed via Python requests
 - Confirms new fetches by comparing a local sync state file (hash)
-- Runs ETL only when the fetched data changed
+- Compares listing fingerprints with the last successfully loaded snapshot
+- Loads only added/modified listings by default
 
 Run (Windows):
   python -m sync.auto_sync --server-id 502
@@ -29,8 +30,7 @@ import requests
 from etl.pipeline import ETLPipeline
 
 
-DEFAULT_BASE_URL = "https://metin2alerts.com"
-DEFAULT_URL_TEMPLATE = DEFAULT_BASE_URL + "/store/public/data/{server_id}.json"
+DEFAULT_URL_TEMPLATE = ""
 
 
 def _utc_now_iso() -> str:
@@ -135,6 +135,34 @@ def _listing_fingerprint(obj: Any) -> Tuple[Any, ...]:
     )
 
 
+def _listing_fingerprint_digest(obj: Any) -> str:
+    """Return a compact, stable representation of a normalized listing."""
+
+    return _sha256_of_json(_listing_fingerprint(obj))
+
+
+def build_market_delta(
+    items: List[Any],
+    previous_fingerprints: List[str],
+) -> Tuple[List[Any], List[str], int, int]:
+    """Return added rows, current fingerprints, removed count, unchanged count.
+
+    The upstream payload does not expose a documented stable listing identifier.
+    Consequently, an edited listing appears as one removal and one addition.
+    """
+
+    previous = set(previous_fingerprints)
+    current: Dict[str, Any] = {}
+    for item in items:
+        current.setdefault(_listing_fingerprint_digest(item), item)
+
+    current_keys = set(current)
+    added = [item for digest, item in current.items() if digest not in previous]
+    removed_count = len(previous - current_keys)
+    unchanged_count = len(previous & current_keys)
+    return added, sorted(current_keys), removed_count, unchanged_count
+
+
 def dedupe_market_payload(items: List[Any]) -> List[Any]:
     """Remove exact duplicates while preserving order."""
     seen = set()
@@ -164,6 +192,14 @@ def _read_json(path: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _snapshot_file_for_state(state_file: Path) -> Path:
+    """Keep large fingerprint sets out of the human-readable sync state file."""
+
+    if state_file.suffix:
+        return state_file.with_name(f"{state_file.stem}_snapshot{state_file.suffix}")
+    return state_file.with_name(f"{state_file.name}_snapshot.json")
+
+
 @dataclass
 class SyncConfig:
     server_id: int
@@ -172,18 +208,50 @@ class SyncConfig:
     interval_min_minutes: int
     interval_max_minutes: int
     timeout_seconds: int
+    load_mode: str = "delta"
 
 
-def fetch_market_data(url: str, timeout_seconds: int) -> Tuple[int, Any]:
-    resp = requests.get(url, timeout=timeout_seconds)
-    return resp.status_code, resp.json()
+def fetch_market_data(
+    url: str,
+    timeout_seconds: int,
+    etag: Optional[str] = None,
+    last_modified: Optional[str] = None,
+) -> Tuple[int, Any, Dict[str, str]]:
+    """Fetch JSON, using HTTP validators when the provider supports them."""
+
+    headers = {"Accept": "application/json"}
+    if etag:
+        headers["If-None-Match"] = etag
+    if last_modified:
+        headers["If-Modified-Since"] = last_modified
+
+    response = requests.get(url, timeout=timeout_seconds, headers=headers)
+    validators = {
+        "etag": response.headers.get("ETag") or etag or "",
+        "last_modified": response.headers.get("Last-Modified") or last_modified or "",
+    }
+    if response.status_code != 200:
+        return response.status_code, None, validators
+    return response.status_code, response.json(), validators
 
 
 def run_once(cfg: SyncConfig) -> int:
+    if not cfg.url_template.strip():
+        return 2
+
     url = cfg.url_template.format(server_id=cfg.server_id)
 
     prev_state = _read_json(cfg.state_file) or {}
     prev_hash = prev_state.get("last_hash")
+    snapshot_file = _snapshot_file_for_state(cfg.state_file)
+    previous_snapshot = _read_json(snapshot_file) or {}
+    previous_fingerprints = previous_snapshot.get("fingerprints") or []
+    if not isinstance(previous_fingerprints, list):
+        previous_fingerprints = []
+
+    load_mode = str(cfg.load_mode or "delta").strip().lower()
+    if load_mode not in {"delta", "snapshot"}:
+        load_mode = "delta"
 
     state: Dict[str, Any] = {
         "server_id": cfg.server_id,
@@ -193,6 +261,10 @@ def run_once(cfg: SyncConfig) -> int:
         "last_http_status": None,
         "last_item_count": None,
         "last_hash": prev_hash,
+        "source_etag": prev_state.get("source_etag"),
+        "source_last_modified": prev_state.get("source_last_modified"),
+        "load_mode": load_mode,
+        "snapshot_file": str(snapshot_file),
         "last_change_detected_at": prev_state.get("last_change_detected_at"),
         "last_load_at": prev_state.get("last_load_at"),
         "last_load_status": prev_state.get("last_load_status", "never"),
@@ -202,8 +274,21 @@ def run_once(cfg: SyncConfig) -> int:
     }
 
     try:
-        status, data = fetch_market_data(url, cfg.timeout_seconds)
+        status, data, validators = fetch_market_data(
+            url,
+            cfg.timeout_seconds,
+            etag=prev_state.get("source_etag"),
+            last_modified=prev_state.get("source_last_modified"),
+        )
         state["last_http_status"] = status
+        state["source_etag"] = validators["etag"] or None
+        state["source_last_modified"] = validators["last_modified"] or None
+
+        if status == 304:
+            state["changed"] = False
+            state["last_load_status"] = "skipped_not_modified"
+            _atomic_write_json(cfg.state_file, state)
+            return 0
 
         if status != 200:
             state["last_error"] = f"HTTP {status}"
@@ -224,6 +309,14 @@ def run_once(cfg: SyncConfig) -> int:
         state["last_item_count_raw"] = raw_count
         state["last_item_count"] = len(data)
 
+        added_items, current_fingerprints, removed_count, unchanged_count = build_market_delta(
+            data,
+            previous_fingerprints,
+        )
+        state["delta_added_count"] = len(added_items)
+        state["delta_removed_count"] = removed_count
+        state["delta_unchanged_count"] = unchanged_count
+
         new_hash = _sha256_of_json(data)
         changed = (prev_hash != new_hash)
 
@@ -232,14 +325,40 @@ def run_once(cfg: SyncConfig) -> int:
 
         if not changed:
             state["last_load_status"] = "skipped_no_change"
+            if not snapshot_file.exists():
+                _atomic_write_json(
+                    snapshot_file,
+                    {
+                        "server_id": cfg.server_id,
+                        "captured_at": state["last_fetch_at"],
+                        "payload_hash": new_hash,
+                        "fingerprints": current_fingerprints,
+                    },
+                )
             _atomic_write_json(cfg.state_file, state)
             return 0
 
         state["last_change_detected_at"] = _utc_now_iso()
         state["change_count"] = int(state["change_count"]) + 1
 
+        load_items = added_items if load_mode == "delta" else data
+        if not load_items:
+            state["last_load_at"] = _utc_now_iso()
+            state["last_load_status"] = "skipped_no_new_listings"
+            _atomic_write_json(
+                snapshot_file,
+                {
+                    "server_id": cfg.server_id,
+                    "captured_at": state["last_fetch_at"],
+                    "payload_hash": new_hash,
+                    "fingerprints": current_fingerprints,
+                },
+            )
+            _atomic_write_json(cfg.state_file, state)
+            return 0
+
         pipeline = ETLPipeline(server_id=cfg.server_id)
-        ok = pipeline.run_full_pipeline(data)
+        ok = pipeline.run_full_pipeline(load_items)
         state["last_load_at"] = _utc_now_iso()
         state["last_load_status"] = "success" if ok else "failed"
         if not ok:
@@ -255,6 +374,17 @@ def run_once(cfg: SyncConfig) -> int:
             "transformation_timestamp": str(stats.get("transformation_timestamp")),
         }
 
+        # Advance the comparison snapshot only after a successful ETL load. A
+        # failed batch is therefore retried during the next cycle.
+        _atomic_write_json(
+            snapshot_file,
+            {
+                "server_id": cfg.server_id,
+                "captured_at": state["last_fetch_at"],
+                "payload_hash": new_hash,
+                "fingerprints": current_fingerprints,
+            },
+        )
         _atomic_write_json(cfg.state_file, state)
         return 0
 
@@ -271,7 +401,7 @@ def main() -> int:
     parser.add_argument(
         "--url-template",
         type=str,
-        default=DEFAULT_URL_TEMPLATE,
+        required=True,
         help="Fetch URL template (must include {server_id})",
     )
     parser.add_argument(
@@ -283,6 +413,12 @@ def main() -> int:
     parser.add_argument("--min-minutes", type=int, default=10, help="Minimum minutes between fetches")
     parser.add_argument("--max-minutes", type=int, default=15, help="Maximum minutes between fetches")
     parser.add_argument("--timeout", type=int, default=30, help="HTTP timeout in seconds")
+    parser.add_argument(
+        "--load-mode",
+        choices=("delta", "snapshot"),
+        default="delta",
+        help="Load only new/modified listings (delta) or every listing (snapshot)",
+    )
     parser.add_argument("--once", action="store_true", help="Fetch once and exit")
 
     args = parser.parse_args()
@@ -297,6 +433,7 @@ def main() -> int:
         interval_min_minutes=args.min_minutes,
         interval_max_minutes=args.max_minutes,
         timeout_seconds=args.timeout,
+        load_mode=args.load_mode,
     )
 
     if args.once:

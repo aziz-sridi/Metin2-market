@@ -281,7 +281,7 @@ class MarketDataDelta(BaseModel):
 @router.post("/external/ingest-market-data")
 async def ingest_external_market_data(data: ExternalMarketDataRequest):
     """
-    Receive market data from external source (metin2alerts.com)
+    Receive market data from an authorized external source.
     
     This endpoint accepts market item data from the external market tracker
     and stores it in the data warehouse with differential update tracking.

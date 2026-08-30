@@ -1,45 +1,181 @@
-"""FastAPI Application for Metin2 Market Data Warehouse.
+"""FastAPI application for the Metin2 market data warehouse.
 
-This server also runs an automatic external sync loop:
+The optional background worker:
 - Sync static reference files (English) from Metin2Alerts
 - Periodically fetch market data and run ETL when it changes
 """
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime, date, timedelta
-import os
 import asyncio
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timezone
+import logging
+import os
 from pathlib import Path
+import random
+from typing import AsyncIterator, Optional
+
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Load environment variables
 load_dotenv()
 
 # Import routers
-from api.routes import items, analytics, etl, admin, reference
-from api.routes import dashboard
+from api.routes import admin, analytics, dashboard, etl, items, reference
+from config.settings import config
 
-# Initialize FastAPI app
+
+logger = logging.getLogger(__name__)
+
+_auto_sync_task: Optional[asyncio.Task] = None
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    return default if value is None else value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _database_is_ready() -> None:
+    """Raise when PostgreSQL cannot accept a simple query."""
+
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(
+        config.get_db_connection_string_sqlalchemy(),
+        connect_args={"connect_timeout": 3},
+    )
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    finally:
+        engine.dispose()
+
+
+async def _run_sync_worker() -> None:
+    """Run reference sync, then poll market sources until cancelled."""
+
+    from sync.static_data_sync import StaticSyncConfig, sync_static_data
+    from sync.auto_sync import SyncConfig, run_once, DEFAULT_URL_TEMPLATE
+    from config.servers import allowed_server_ids, market_state_file_for_server
+
+    timeout = int(os.getenv("EXTERNAL_TIMEOUT_SECONDS", "30"))
+
+    min_minutes = int(os.getenv("EXTERNAL_SYNC_MIN_MINUTES", "10"))
+    max_minutes = int(os.getenv("EXTERNAL_SYNC_MAX_MINUTES", "15"))
+
+    url_template = os.getenv("EXTERNAL_MARKET_URL_TEMPLATE", DEFAULT_URL_TEMPLATE).strip()
+    if not url_template:
+        logger.error(
+            "External sync is enabled but EXTERNAL_MARKET_URL_TEMPLATE is not configured"
+        )
+        return
+
+    if _env_flag("EXTERNAL_STATIC_SYNC_ENABLED", False):
+        static_base_url = os.getenv("EXTERNAL_STATIC_BASE_URL", "").rstrip("/")
+        if not static_base_url:
+            logger.error(
+                "Static sync is enabled but EXTERNAL_STATIC_BASE_URL is not configured"
+            )
+        else:
+            static_cfg = StaticSyncConfig(
+                base_url=static_base_url,
+                output_dir=Path(os.getenv("EXTERNAL_STATIC_OUTPUT_DIR", "./data/external")),
+                state_file=Path(os.getenv("EXTERNAL_STATIC_STATE_FILE", "./sync_static_state.json")),
+                timeout_seconds=timeout,
+            )
+            static_result = await asyncio.to_thread(sync_static_data, static_cfg)
+            if static_result.get("error"):
+                logger.warning("Static reference sync failed: %s", static_result["error"])
+
+    server_ids = allowed_server_ids()
+    base_state_file = Path(os.getenv("EXTERNAL_MARKET_STATE_FILE", "./sync_state.json"))
+    load_mode = os.getenv("EXTERNAL_SYNC_LOAD_MODE", "delta")
+
+    if min_minutes <= 0 or max_minutes < min_minutes:
+        logger.error(
+            "External sync disabled: invalid interval range %s-%s minutes",
+            min_minutes,
+            max_minutes,
+        )
+        return
+
+    while True:
+        for server_id in server_ids:
+            cfg = SyncConfig(
+                server_id=server_id,
+                url_template=url_template,
+                state_file=market_state_file_for_server(base_state_file, server_id),
+                interval_min_minutes=min_minutes,
+                interval_max_minutes=max_minutes,
+                timeout_seconds=timeout,
+                load_mode=load_mode,
+            )
+            try:
+                result_code = await asyncio.to_thread(run_once, cfg)
+                if result_code:
+                    logger.warning("Market sync for server %s returned %s", server_id, result_code)
+            except Exception:
+                logger.exception("Unexpected market sync failure for server %s", server_id)
+
+        await asyncio.sleep(random.uniform(min_minutes, max_minutes) * 60)
+
+
+async def _run_sync_worker_safely() -> None:
+    """Prevent a bad remote response or setting from taking down the API."""
+
+    try:
+        await _run_sync_worker()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("External synchronization worker stopped unexpectedly")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Start sync without delaying API readiness and stop it cleanly."""
+
+    global _auto_sync_task
+    if _env_flag("EXTERNAL_SYNC_ENABLED", False):
+        _auto_sync_task = asyncio.create_task(
+            _run_sync_worker_safely(),
+            name="external-market-sync",
+        )
+
+    yield
+
+    if _auto_sync_task is not None:
+        _auto_sync_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _auto_sync_task
+        _auto_sync_task = None
+
+
 app = FastAPI(
     title="Metin2 Market Data Warehouse API",
     description="API for querying and analyzing Metin2 in-game market data",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
-# Add CORS middleware
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
-# Include routers
 app.include_router(items.router, prefix="/api/items", tags=["Items"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(etl.router, prefix="/api/etl", tags=["ETL"])
@@ -48,88 +184,38 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(dashboard.router, tags=["Dashboard"])
 
 
-_auto_sync_task: Optional[asyncio.Task] = None
-
-
-async def _run_startup_sync() -> None:
-    """Run one-time static sync and start the periodic market+ETL loop."""
-
-    from sync.static_data_sync import StaticSyncConfig, sync_static_data
-    from sync.auto_sync import SyncConfig, run_once, DEFAULT_URL_TEMPLATE
-    from config.servers import allowed_server_ids, market_state_file_for_server
-
-    base_url = os.getenv("EXTERNAL_BASE_URL", "https://metin2alerts.com")
-    timeout = int(os.getenv("EXTERNAL_TIMEOUT_SECONDS", "30"))
-
-    min_minutes = int(os.getenv("EXTERNAL_SYNC_MIN_MINUTES", "10"))
-    max_minutes = int(os.getenv("EXTERNAL_SYNC_MAX_MINUTES", "15"))
-
-    # 1) Sync static reference data once at startup (English only)
-    static_cfg = StaticSyncConfig(
-        base_url=base_url,
-        output_dir=Path(os.getenv("EXTERNAL_STATIC_OUTPUT_DIR", "./data/external")),
-        state_file=Path(os.getenv("EXTERNAL_STATIC_STATE_FILE", "./sync_static_state.json")),
-        timeout_seconds=timeout,
-    )
-    await asyncio.to_thread(sync_static_data, static_cfg)
-
-    # 2) Start periodic market sync that runs ETL only on change (limited servers)
-    server_ids = allowed_server_ids()
-    url_template = os.getenv("EXTERNAL_MARKET_URL_TEMPLATE", DEFAULT_URL_TEMPLATE)
-    base_state_file = Path(os.getenv("EXTERNAL_MARKET_STATE_FILE", "./sync_state.json"))
-
-    async def _loop() -> None:
-        # Basic validation
-        if min_minutes <= 0 or max_minutes <= 0:
-            return
-        if max_minutes < min_minutes:
-            return
-
-        while True:
-            for sid in server_ids:
-                cfg = SyncConfig(
-                    server_id=sid,
-                    url_template=url_template,
-                    state_file=market_state_file_for_server(base_state_file, sid),
-                    interval_min_minutes=min_minutes,
-                    interval_max_minutes=max_minutes,
-                    timeout_seconds=timeout,
-                )
-                try:
-                    await asyncio.to_thread(run_once, cfg)
-                except Exception:
-                    # Keep the server alive even if a single server cycle fails
-                    pass
-
-            sleep_minutes = min_minutes
-            # Simple fixed sleep (avoid extra jitter complexity inside the API process)
-            await asyncio.sleep(sleep_minutes * 60)
-
-    global _auto_sync_task
-    _auto_sync_task = asyncio.create_task(_loop())
-
-
-@app.on_event("startup")
-async def _on_startup() -> None:
-    await _run_startup_sync()
-
-
-@app.on_event("shutdown")
-async def _on_shutdown() -> None:
-    global _auto_sync_task
-    if _auto_sync_task:
-        _auto_sync_task.cancel()
-        _auto_sync_task = None
-
-
 # Health check endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Check API health status"""
+    """Return process liveness without depending on external services."""
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "Metin2 Market Data Warehouse"
+    }
+
+
+@app.get("/ready", tags=["Health"])
+async def readiness_check():
+    """Report whether the API can reach its PostgreSQL warehouse."""
+
+    try:
+        await asyncio.to_thread(_database_is_ready)
+    except Exception as exc:
+        logger.warning("Readiness check failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "database": "unavailable",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+    return {
+        "status": "ready",
+        "database": "connected",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -147,7 +233,8 @@ async def root():
             "etl": "/api/etl",
             "admin": "/api/admin",
             "docs": "/docs",
-            "health": "/health"
+            "health": "/health",
+            "readiness": "/ready",
         }
     }
 
@@ -161,7 +248,7 @@ async def http_exception_handler(request, exc):
         content={
             "error": exc.detail,
             "status_code": exc.status_code,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     )
 
@@ -174,7 +261,7 @@ async def value_error_handler(request, exc):
         content={
             "error": str(exc),
             "status_code": 400,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     )
 
@@ -188,7 +275,7 @@ if __name__ == "__main__":
     debug = os.getenv("DEBUG", "False").lower() == "true"
     
     uvicorn.run(
-        "main:app",
+        "api.main:app",
         host=host,
         port=port,
         reload=debug,

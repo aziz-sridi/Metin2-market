@@ -5,9 +5,8 @@ market data (e.g. stat maps, item names, descriptions).
 
 Design decision (per project requirement): language is always English.
 
-Remote source:
-- https://metin2alerts.com/m2_data/en/*.json
-- https://metin2alerts.com/m2_data/*.json (non-language files)
+The caller must provide an authorized base URL exposing the expected
+``/m2_data/...`` paths.
 
 Local storage (default): ./data/external/m2_data/...
 """
@@ -24,7 +23,7 @@ from typing import Any, Dict, Optional, Tuple
 import requests
 
 
-DEFAULT_BASE_URL = "https://metin2alerts.com"
+DEFAULT_BASE_URL = ""
 DEFAULT_LANGUAGE = "en"
 DEFAULT_OUTPUT_DIR = Path("./data/external")
 DEFAULT_STATE_FILE = Path("./sync_static_state.json")

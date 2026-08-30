@@ -303,6 +303,10 @@ def _query_non_equipment_price_history(
               ON fia.item_key = fmt.item_key
              AND fia.time_key = fmt.time_key
              AND fia.recorded_timestamp = fmt.transaction_timestamp
+             AND fia.server_id IS NOT DISTINCT FROM fmt.server_id
+             AND fia.seller_name IS NOT DISTINCT FROM fmt.seller_name
+             AND fia.job_id IS NOT DISTINCT FROM fmt.job_id
+             AND fia.category_id IS NOT DISTINCT FROM fmt.category_id
             WHERE {' AND '.join(where)}
         ),
         day_min AS (
@@ -923,6 +927,10 @@ def api_query_listings(payload: AlertQueryRequest = Body(...)):
           ON fia.item_key = fmt.item_key
          AND fia.time_key = fmt.time_key
          AND fia.recorded_timestamp = fmt.transaction_timestamp
+         AND fia.server_id IS NOT DISTINCT FROM fmt.server_id
+         AND fia.seller_name IS NOT DISTINCT FROM fmt.seller_name
+         AND fia.job_id IS NOT DISTINCT FROM fmt.job_id
+         AND fia.category_id IS NOT DISTINCT FROM fmt.category_id
         WHERE {' AND '.join(where)}
         ORDER BY fmt.transaction_timestamp DESC
         LIMIT %(limit)s;
@@ -1008,6 +1016,10 @@ def api_bonus_price_distribution(
           ON fia.item_key = fmt.item_key
          AND fia.time_key = fmt.time_key
          AND fia.recorded_timestamp = fmt.transaction_timestamp
+         AND fia.server_id IS NOT DISTINCT FROM fmt.server_id
+         AND fia.seller_name IS NOT DISTINCT FROM fmt.seller_name
+         AND fia.job_id IS NOT DISTINCT FROM fmt.job_id
+         AND fia.category_id IS NOT DISTINCT FROM fmt.category_id
         WHERE {' AND '.join(where)};
     """
 
@@ -1205,6 +1217,10 @@ def _query_item_prices(
           ON fia.item_key = fmt.item_key
          AND fia.time_key = fmt.time_key
          AND fia.recorded_timestamp = fmt.transaction_timestamp
+         AND fia.server_id IS NOT DISTINCT FROM fmt.server_id
+         AND fia.seller_name IS NOT DISTINCT FROM fmt.seller_name
+         AND fia.job_id IS NOT DISTINCT FROM fmt.job_id
+         AND fia.category_id IS NOT DISTINCT FROM fmt.category_id
         WHERE {' AND '.join(where)}
         ORDER BY fmt.transaction_timestamp DESC;
     """

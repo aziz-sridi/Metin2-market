@@ -235,31 +235,30 @@ async def purge_and_sync_now(
             detail="Refusing to purge. Pass confirm=DELETE_ALL_DATA to proceed.",
         )
 
-    # 1) purge
-    purge_result = await purge_database(
-        confirm=confirm,
-        clear_sync_state_files=clear_sync_state_files,
-        clear_external_cache=clear_external_cache,
-    )
-
-    # 2) sync static + one market cycle
+    # Validate every sync input before deleting any data.
     from sync.static_data_sync import StaticSyncConfig, sync_static_data
     from sync.auto_sync import SyncConfig, run_once, DEFAULT_URL_TEMPLATE
 
-    base_url = os.getenv("EXTERNAL_BASE_URL", "https://metin2alerts.com")
     timeout = int(os.getenv("EXTERNAL_TIMEOUT_SECONDS", "30"))
+    url_template = os.getenv("EXTERNAL_MARKET_URL_TEMPLATE", DEFAULT_URL_TEMPLATE).strip()
+    if not url_template:
+        raise HTTPException(
+            status_code=400,
+            detail="EXTERNAL_MARKET_URL_TEMPLATE must be configured before purge-and-sync.",
+        )
 
-    static_cfg = StaticSyncConfig(
-        base_url=base_url,
-        output_dir=Path(os.getenv("EXTERNAL_STATIC_OUTPUT_DIR", "./data/external")),
-        state_file=Path(os.getenv("EXTERNAL_STATIC_STATE_FILE", "./sync_static_state.json")),
-        timeout_seconds=timeout,
-    )
-
-    static_result = await asyncio.to_thread(sync_static_data, static_cfg)
-
-    url_template = os.getenv("EXTERNAL_MARKET_URL_TEMPLATE", DEFAULT_URL_TEMPLATE)
-    base_state_file = Path(os.getenv("EXTERNAL_MARKET_STATE_FILE", "./sync_state.json"))
+    static_enabled = os.getenv("EXTERNAL_STATIC_SYNC_ENABLED", "false").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    static_base_url = os.getenv("EXTERNAL_STATIC_BASE_URL", "").rstrip("/")
+    if static_enabled and not static_base_url:
+        raise HTTPException(
+            status_code=400,
+            detail="EXTERNAL_STATIC_BASE_URL must be configured when static sync is enabled.",
+        )
 
     if server_ids:
         requested = [int(p.strip()) for p in server_ids.split(",") if p.strip()]
@@ -272,6 +271,25 @@ async def purge_and_sync_now(
     else:
         target_server_ids = allowed_server_ids()
 
+    purge_result = await purge_database(
+        confirm=confirm,
+        clear_sync_state_files=clear_sync_state_files,
+        clear_external_cache=clear_external_cache,
+    )
+
+    static_result: Dict[str, Any] = {"status": "skipped_disabled"}
+    if static_enabled:
+        static_cfg = StaticSyncConfig(
+            base_url=static_base_url,
+            output_dir=Path(os.getenv("EXTERNAL_STATIC_OUTPUT_DIR", "./data/external")),
+            state_file=Path(os.getenv("EXTERNAL_STATIC_STATE_FILE", "./sync_static_state.json")),
+            timeout_seconds=timeout,
+        )
+        static_result = await asyncio.to_thread(sync_static_data, static_cfg)
+
+    base_state_file = Path(os.getenv("EXTERNAL_MARKET_STATE_FILE", "./sync_state.json"))
+    load_mode = os.getenv("EXTERNAL_SYNC_LOAD_MODE", "delta")
+
     cycle_results = []
     for sid in target_server_ids:
         market_cfg = SyncConfig(
@@ -281,6 +299,7 @@ async def purge_and_sync_now(
             interval_min_minutes=1,
             interval_max_minutes=1,
             timeout_seconds=timeout,
+            load_mode=load_mode,
         )
         rc = await asyncio.to_thread(run_once, market_cfg)
         cycle_results.append({"server_id": sid, "rc": rc})

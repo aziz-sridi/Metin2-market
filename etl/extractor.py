@@ -187,6 +187,8 @@ class MarketDataExtractor:
     def _parse_elemental_attributes(self, item: MarketItem, data: Dict[str, Any]):
         """Parse elemental damage/resistance attributes"""
         elem = data.get('elem', [])
+        if not isinstance(elem, (list, tuple)):
+            elem = []
         
         if elem and len(elem) >= 2:
             stat_id = elem[0]
@@ -202,6 +204,13 @@ class MarketDataExtractor:
         """Parse attribute bonuses from raw value properties"""
         attrs = data.get('attrs', [])
         rand = data.get('rand', [])
+        # Pandas represents fields omitted by some rows as NaN. Treat those
+        # values exactly like an absent optional array instead of dropping the
+        # whole listing during extraction.
+        if not isinstance(attrs, (list, tuple)):
+            attrs = []
+        if not isinstance(rand, (list, tuple)):
+            rand = []
         
         # Process regular attributes
         if attrs:
