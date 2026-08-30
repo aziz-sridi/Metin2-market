@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useItemSuggestions } from '../hooks/useItemSuggestions.js'
 
 export default function ItemSearch({ onAddItem }) {
@@ -7,10 +7,6 @@ export default function ItemSearch({ onAddItem }) {
 
   const { results, loading, error } = useItemSuggestions(q, { limit: 30, debounceMs: 250 })
   const suggestions = useMemo(() => results || [], [results])
-
-  useEffect(() => {
-    setActiveIndex(-1)
-  }, [q])
 
   function add(item) {
     if (!item) return
@@ -21,15 +17,18 @@ export default function ItemSearch({ onAddItem }) {
   return (
     <div className="item-search-container">
       <div className="search-header">
-        <h2>Item Price Lookup</h2>
-        <p className="muted">Search for any item to see its lowest market price</p>
+        <h2>Add an item</h2>
+        <p className="muted">Search the item catalog and add it to your watchlist.</p>
       </div>
 
       <div className="search-form" role="search">
         <input
           type="text"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value)
+            setActiveIndex(-1)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
               e.preventDefault()
@@ -69,17 +68,18 @@ export default function ItemSearch({ onAddItem }) {
           </div>
           <div className="results-grid">
             {suggestions.map((item, idx) => (
-              <div
+              <button
+                type="button"
                 key={item.item_vnum}
                 className="result-item"
                 onMouseEnter={() => setActiveIndex(idx)}
                 onClick={() => add(item)}
-                style={activeIndex === idx ? { outline: '1px solid rgba(255,255,255,0.25)' } : null}
+                data-active={activeIndex === idx ? 'true' : 'false'}
               >
                 <div className="result-name">{item.item_name}</div>
                 <div className="result-vnum">#{item.item_vnum}</div>
                 <div className="result-type">{item.item_type}</div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

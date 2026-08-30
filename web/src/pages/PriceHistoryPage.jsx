@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import Plot from 'react-plotly.js'
+import Plot from '../components/Plot.jsx'
 
 import { FilterBar } from '../components/FilterBar.jsx'
 import { useItemSuggestions } from '../hooks/useItemSuggestions.js'
@@ -10,11 +10,8 @@ import {
   listEnchantments,
 } from '../lib/api.js'
 import { formatYang } from '../lib/format.js'
-import { useTheme } from '../lib/theme.js'
 
 export default function PriceHistoryPage() {
-  const { isDark } = useTheme()
-
   const servers = useMemo(
     () => [
       { value: '502', label: 'Europe' },
@@ -353,7 +350,7 @@ export default function PriceHistoryPage() {
                   tickvals: yTicks?.tickvals,
                   ticktext: yTicks?.ticktext,
                 },
-                template: isDark ? 'plotly_dark' : 'plotly_white',
+                template: 'plotly_white',
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 plot_bgcolor: 'rgba(0,0,0,0)',
                 legend: { orientation: 'h' },

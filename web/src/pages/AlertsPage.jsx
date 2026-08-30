@@ -334,7 +334,7 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="alerts-page space-y-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Alerts</h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -644,13 +644,15 @@ export default function AlertsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          <div className="text-sm font-semibold">Matches</div>
+        <section className="matches-panel rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+          <div className="text-sm font-semibold">
+            Matches <span className="font-normal text-slate-500">({(monitoring ? monitorMatches : results).length})</span>
+          </div>
           <div className="text-xs text-slate-600 dark:text-slate-400">
             {monitoring ? 'Live matches (newest first)' : 'Last test query results'}
           </div>
 
-          <div className="mt-3 overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
+          <div className="matches-table mt-3 overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
                 <tr>

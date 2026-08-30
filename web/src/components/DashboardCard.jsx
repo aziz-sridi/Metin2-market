@@ -5,34 +5,48 @@ export default function DashboardCard({ itemVnum, itemName, removable = false, o
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [chart, setChart] = useState(null)
+  const [error, setError] = useState('')
 
   useEffect(() => {
+    const controller = new AbortController()
+
+    async function fetchItemData() {
+      setLoading(true)
+      setError('')
+      try {
+        const response = await fetch(`/api/analytics/item-min-price/${itemVnum}`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error(`Request failed with status ${response.status}`)
+        setData(await response.json())
+      } catch (requestError) {
+        if (requestError.name !== 'AbortError') {
+          setData(null)
+          setError(requestError.message || 'Unable to load market data')
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+
+    async function fetchChart() {
+      try {
+        const response = await fetch(`/api/analytics/dashboard-chart/${itemVnum}`, {
+          signal: controller.signal,
+        })
+        if (!response.ok) return
+        const result = await response.json()
+        setChart(result.chart_data || null)
+      } catch (requestError) {
+        if (requestError.name !== 'AbortError') setChart(null)
+      }
+    }
+
     fetchItemData()
     fetchChart()
+
+    return () => controller.abort()
   }, [itemVnum])
-
-  const fetchItemData = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/analytics/item-min-price/${itemVnum}`)
-      const result = await response.json()
-      setData(result)
-    } catch (error) {
-      console.error('Error fetching item data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchChart = async () => {
-    try {
-      const response = await fetch(`/api/analytics/dashboard-chart/${itemVnum}`)
-      const result = await response.json()
-      setChart(result.chart_data)
-    } catch (error) {
-      console.error('Error fetching chart:', error)
-    }
-  }
 
   const formatPrice = (price) => {
     if (price === null || price === undefined) return 'N/A'
@@ -47,7 +61,27 @@ export default function DashboardCard({ itemVnum, itemName, removable = false, o
     )
   }
 
-  if (!data || !data.latest_min_price) {
+  if (error) {
+    return (
+      <div className="dashboard-card no-data" role="alert">
+        <h3>{itemName}</h3>
+        <p>{error}</p>
+      </div>
+    )
+  }
+
+  const formatSyncDate = (value) => {
+    const date = new Date(String(value).replace(' ', 'T'))
+    if (Number.isNaN(date.getTime())) return String(value)
+    return new Intl.DateTimeFormat('en', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
+  }
+
+  if (!data || data.latest_min_price == null) {
     return (
       <div className="dashboard-card no-data">
         <h3>{itemName}</h3>
@@ -110,7 +144,7 @@ export default function DashboardCard({ itemVnum, itemName, removable = false, o
         <div className="history-list">
           {data.price_history.slice(0, 5).map((entry, idx) => (
             <div key={idx} className="history-item">
-              <span className="history-date">{entry.date}</span>
+              <span className="history-date">{formatSyncDate(entry.date)}</span>
               <span className="history-price">{formatPrice(entry.min_price)}</span>
             </div>
           ))}

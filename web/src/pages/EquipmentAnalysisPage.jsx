@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import Plot from 'react-plotly.js'
+import Plot from '../components/Plot.jsx'
 
 import { useItemSuggestions } from '../hooks/useItemSuggestions.js'
 import { estimateEquipment, getEquipmentBonusImpact } from '../lib/api.js'
 import { formatYang } from '../lib/format.js'
-import { useTheme } from '../lib/theme.js'
 
 export default function EquipmentAnalysisPage() {
-  const { isDark } = useTheme()
-
   const [q, setQ] = useState('')
   const [selected, setSelected] = useState(null) // {item_vnum,item_name,item_type}
 
@@ -275,7 +272,7 @@ export default function EquipmentAnalysisPage() {
                   margin: { l: 50, r: 20, t: 50, b: 60 },
                   xaxis: { title: 'bonus' },
                   yaxis: { title: 'Median premium (w + y)' },
-                  template: isDark ? 'plotly_dark' : 'plotly_white',
+                  template: 'plotly_white',
                   paper_bgcolor: 'rgba(0,0,0,0)',
                   plot_bgcolor: 'rgba(0,0,0,0)',
                 }}

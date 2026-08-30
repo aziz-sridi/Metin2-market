@@ -2,12 +2,172 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color: oklch(0.25 0.012 255);
+  background: oklch(0.975 0.004 95);
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --surface: oklch(0.995 0.003 95);
+  --surface-muted: oklch(0.965 0.005 95);
+  --border: oklch(0.89 0.008 255);
+  --border-strong: oklch(0.79 0.012 255);
+  --muted: oklch(0.52 0.015 255);
+  --accent: oklch(0.48 0.11 152);
+  --accent-soft: oklch(0.94 0.025 152);
+  --danger: oklch(0.51 0.18 28);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 html,
 body,
 #root {
   height: 100%;
 }
 
+html {
+  color-scheme: light;
+}
+
 body {
   margin: 0;
+  min-width: 1024px;
+  background: oklch(0.975 0.004 95);
+  color: oklch(0.25 0.012 255);
+  font-feature-settings: "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  transition: transform 140ms var(--ease-out), border-color 140ms ease, background-color 140ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+:focus-visible {
+  outline: 2px solid oklch(0.58 0.12 152);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: oklch(0.88 0.06 152);
+}
+
+.app-shell {
+  min-height: 100%;
+  background: oklch(0.975 0.004 95);
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--surface) 96%, transparent);
+}
+
+.app-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100% - 48px, 1440px);
+  min-height: 58px;
+  margin-inline: auto;
+}
+
+.wordmark {
+  color: oklch(0.22 0.015 255);
+  font-size: 0.94rem;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.app-nav {
+  display: flex;
+  align-self: stretch;
+  gap: 28px;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 520;
+  text-decoration: none;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.nav-link:hover {
+  color: oklch(0.28 0.015 255);
+}
+
+.nav-link-active {
+  border-bottom-color: var(--accent);
+  color: oklch(0.23 0.015 255);
+}
+
+.app-main {
+  width: min(100% - 48px, 1440px);
+  margin-inline: auto;
+  padding-block: 34px 56px;
+}
+
+input,
+select,
+textarea {
+  border-color: var(--border-strong) !important;
+  background: var(--surface) !important;
+  color: oklch(0.25 0.012 255) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: oklch(0.63 0.012 255) !important;
+}
+
+table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+thead {
+  background: oklch(0.955 0.006 95) !important;
+}
+
+tbody tr {
+  border-color: var(--border) !important;
+}
+
+tbody tr:hover {
+  background: oklch(0.975 0.008 152);
+}
+
+.text-red-300 {
+  color: var(--danger) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

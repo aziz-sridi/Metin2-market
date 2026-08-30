@@ -62,9 +62,9 @@ export default function HomePage() {
   return (
     <div className="homepage-dashboard">
       <div className="dashboard-header">
-        <h1>Market Dashboard</h1>
+        <h1>Watchlist</h1>
         <p className="dashboard-subtitle">
-          Real-time tracking of key items
+          Latest prices from each completed market sync.
         </p>
       </div>
 
@@ -83,7 +83,7 @@ export default function HomePage() {
       <div className="search-section">
         <ItemSearch onAddItem={addTracked} />
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+        <div className="watchlist-actions">
           <button
             type="button"
             className="search-button"
@@ -101,9 +101,7 @@ export default function HomePage() {
           >
             Clear
           </button>
-          <span className="muted" style={{ fontSize: 12 }}>
-            Saved automatically
-          </span>
+          <span className="saved-note">Saved in this browser</span>
         </div>
       </div>
     </div>
